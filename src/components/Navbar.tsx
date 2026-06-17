@@ -2,13 +2,43 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Navbar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<{ username: string } | null>(null);
 
   const isAdmin = pathname.startsWith('/admin');
+
+  // Check auth state on mount and pathname changes
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/verify');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated) {
+            setUser(data.user);
+            return;
+          }
+        }
+        setUser(null);
+      } catch {
+        // Ignore errors
+      }
+    };
+    checkAuth();
+  }, [pathname]);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore errors
+    }
+    setUser(null);
+  };
 
   const links = [
     { href: '/', label: 'Browse FAQs', icon: '📚' },
@@ -48,15 +78,26 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
-          {!isAdmin && (
-            <Link
-              href="/admin"
-              className="nav-link nav-link-admin"
-              onClick={() => setIsOpen(false)}
-              id="nav-link-admin"
-            >
-              🔒 Admin
-            </Link>
+
+          {user ? (
+            <div className="nav-user-pill">
+              <div className="nav-user-avatar">{user.username[0].toUpperCase()}</div>
+              <span className="nav-user-name">{user.username}</span>
+              <button className="nav-logout-btn" onClick={handleLogout} title="Logout" id="nav-logout-btn">
+                ↗
+              </button>
+            </div>
+          ) : (
+            !isAdmin && (
+              <Link
+                href="/admin"
+                className="nav-link nav-link-admin"
+                onClick={() => setIsOpen(false)}
+                id="nav-link-admin"
+              >
+                🔒 Admin
+              </Link>
+            )
           )}
         </div>
       </div>

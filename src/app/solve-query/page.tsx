@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AuthGuard from '@/components/AuthGuard';
 
 interface SolveQuery {
   _id: string;
@@ -13,13 +14,20 @@ interface SolveQuery {
 }
 
 export default function SolveQueryPage() {
+  return (
+    <AuthGuard>
+      {(user) => <SolveQueryContent user={user} />}
+    </AuthGuard>
+  );
+}
+
+function SolveQueryContent({ user }: { user: { userId: string; username: string } }) {
   const [query, setQuery] = useState<SolveQuery | null>(null);
   const [loading, setLoading] = useState(false);
   const [answer, setAnswer] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [sessionId] = useState(() => `peer-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [resolved, setResolved] = useState(false);
 
   const fetchQuery = async () => {
@@ -64,7 +72,6 @@ export default function SolveQueryPage() {
           queryId: query._id,
           action: 'answer',
           answer: answer.trim(),
-          sessionId,
         }),
       });
 
@@ -72,7 +79,6 @@ export default function SolveQueryPage() {
 
       if (res.ok) {
         setMessage('✅ Answer submitted! Your approval counts as the first of three.');
-        // Refresh the query to show updated status
         setTimeout(fetchQuery, 2000);
       } else {
         setError(data.error || 'Failed to submit answer');
@@ -98,7 +104,6 @@ export default function SolveQueryPage() {
         body: JSON.stringify({
           queryId: query._id,
           action: 'approve',
-          sessionId,
         }),
       });
 

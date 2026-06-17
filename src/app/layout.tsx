@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "IIT Ropar FAQ — Crowdsource Knowledge Platform",
@@ -16,10 +17,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        <div className="page-container">
-          {children}
-        </div>
+        <ErrorBoundary>
+          <Navbar />
+          <div className="page-container">
+            {children}
+          </div>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import AuthGuard from '@/components/AuthGuard';
 import TicketDisplay from '@/components/TicketDisplay';
 import StatusTracker from '@/components/StatusTracker';
 
@@ -16,6 +17,14 @@ interface TrackedQuery {
 }
 
 export default function RaiseQueryPage() {
+  return (
+    <AuthGuard>
+      {(user) => <RaiseQueryContent user={user} />}
+    </AuthGuard>
+  );
+}
+
+function RaiseQueryContent({ user }: { user: { userId: string; username: string } }) {
   // Submit query state
   const [question, setQuestion] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -27,6 +36,30 @@ export default function RaiseQueryPage() {
   const [tracking, setTracking] = useState(false);
   const [trackedQuery, setTrackedQuery] = useState<TrackedQuery | null>(null);
   const [trackError, setTrackError] = useState('');
+
+  // User's own queries (auto-populated)
+  const [myQueries, setMyQueries] = useState<TrackedQuery[]>([]);
+  const [loadingMyQueries, setLoadingMyQueries] = useState(true);
+
+  // Fetch user's queries on mount
+  const fetchMyQueries = useCallback(async () => {
+    setLoadingMyQueries(true);
+    try {
+      const res = await fetch(`/api/queries?userId=${encodeURIComponent(user.userId)}`);
+      const data = await res.json();
+      if (res.ok) {
+        setMyQueries(data.queries || []);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingMyQueries(false);
+    }
+  }, [user.userId]);
+
+  useEffect(() => {
+    fetchMyQueries();
+  }, [fetchMyQueries]);
 
   const handleSubmitQuery = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +81,7 @@ export default function RaiseQueryPage() {
       if (res.ok) {
         setSubmittedTicketId(data.ticketId);
         setQuestion('');
+        fetchMyQueries(); // Refresh user's queries
       } else {
         setSubmitError(data.error || 'Failed to submit query');
       }
@@ -178,66 +212,129 @@ export default function RaiseQueryPage() {
 
           {trackedQuery && (
             <div style={{ animation: 'slideUp 0.4s ease' }}>
-              <div style={{ 
-                padding: 'var(--space-md)', 
-                background: 'var(--bg-glass)', 
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
-                marginBottom: 'var(--space-lg)'
-              }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  Ticket: {trackedQuery.ticketId}
-                </div>
-                <div style={{ fontWeight: 600, marginBottom: 'var(--space-sm)' }}>
-                  {trackedQuery.question}
-                </div>
-                <span className={`badge badge-${trackedQuery.status === 'in-review' ? 'review' : trackedQuery.status}`}>
-                  <span className="badge-dot" />
-                  {trackedQuery.status === 'in-review' ? 'In Review' : trackedQuery.status.charAt(0).toUpperCase() + trackedQuery.status.slice(1)}
-                </span>
-              </div>
-
-              <div style={{ position: 'relative' }}>
-                <StatusTracker
-                  status={trackedQuery.status}
-                  approvals={trackedQuery.approvals?.length || 0}
-                  requiredApprovals={trackedQuery.requiredApprovals || 3}
-                />
-              </div>
-
-              {trackedQuery.status === 'in-review' && (
-                <div className="mt-lg">
-                  <div className="approval-bar">
-                    <div
-                      className="approval-bar-fill"
-                      style={{ width: `${((trackedQuery.approvals?.length || 0) / (trackedQuery.requiredApprovals || 3)) * 100}%` }}
-                    />
-                  </div>
-                  <div className="approval-text">
-                    {trackedQuery.approvals?.length || 0} / {trackedQuery.requiredApprovals || 3} peer approvals
-                  </div>
-                </div>
-              )}
-
-              {trackedQuery.status === 'resolved' && trackedQuery.proposedAnswer && (
-                <div className="mt-lg" style={{
-                  padding: 'var(--space-md)',
-                  background: 'rgba(16, 185, 129, 0.08)',
-                  border: '1px solid rgba(16, 185, 129, 0.2)',
-                  borderRadius: 'var(--radius-md)',
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-green-light)', fontWeight: 600, marginBottom: '4px' }}>
-                    ✅ Resolved Answer
-                  </div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-                    {trackedQuery.proposedAnswer}
-                  </div>
-                </div>
-              )}
+              <QueryStatusCard query={trackedQuery} />
             </div>
           )}
         </div>
       </div>
+
+      {/* User's Queries Section */}
+      <div className="glass-card mt-2xl" style={{ animation: 'slideUp 0.5s ease 0.2s both' }} id="my-queries-section">
+        <div className="section-title" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+            <span className="section-title-icon">📋</span>
+            My Queries
+          </div>
+          <span className="badge badge-review">{myQueries.length} total</span>
+        </div>
+
+        {loadingMyQueries ? (
+          <div>
+            {[1, 2].map((i) => (
+              <div key={i} style={{ padding: 'var(--space-md)', marginBottom: 'var(--space-sm)' }}>
+                <div className="skeleton skeleton-title" />
+                <div className="skeleton skeleton-text" style={{ width: '60%' }} />
+              </div>
+            ))}
+          </div>
+        ) : myQueries.length > 0 ? (
+          <div className="my-queries-list">
+            {myQueries.map((q) => (
+              <div
+                key={q._id}
+                className="my-query-item"
+                onClick={() => {
+                  setTrackTicketId(q.ticketId);
+                  setTrackedQuery(q);
+                }}
+              >
+                <div className="my-query-top">
+                  <span className="my-query-ticket">{q.ticketId}</span>
+                  <span className={`badge badge-${q.status === 'in-review' ? 'review' : q.status}`}>
+                    <span className="badge-dot" />
+                    {q.status === 'in-review' ? 'In Review' : q.status.charAt(0).toUpperCase() + q.status.slice(1)}
+                  </span>
+                </div>
+                <div className="my-query-question">{q.question}</div>
+                <div className="my-query-date">
+                  {new Date(q.createdAt).toLocaleDateString('en-IN', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state-icon">📭</div>
+            <h3>No queries yet</h3>
+            <p>Your submitted queries will appear here automatically.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QueryStatusCard({ query }: { query: TrackedQuery }) {
+  return (
+    <div>
+      <div style={{
+        padding: 'var(--space-md)',
+        background: 'var(--bg-glass)',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--border-subtle)',
+        marginBottom: 'var(--space-lg)'
+      }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+          Ticket: {query.ticketId}
+        </div>
+        <div style={{ fontWeight: 600, marginBottom: 'var(--space-sm)' }}>
+          {query.question}
+        </div>
+        <span className={`badge badge-${query.status === 'in-review' ? 'review' : query.status}`}>
+          <span className="badge-dot" />
+          {query.status === 'in-review' ? 'In Review' : query.status.charAt(0).toUpperCase() + query.status.slice(1)}
+        </span>
+      </div>
+
+      <div style={{ position: 'relative' }}>
+        <StatusTracker
+          status={query.status}
+          approvals={query.approvals?.length || 0}
+          requiredApprovals={query.requiredApprovals || 3}
+        />
+      </div>
+
+      {query.status === 'in-review' && (
+        <div className="mt-lg">
+          <div className="approval-bar">
+            <div
+              className="approval-bar-fill"
+              style={{ width: `${((query.approvals?.length || 0) / (query.requiredApprovals || 3)) * 100}%` }}
+            />
+          </div>
+          <div className="approval-text">
+            {query.approvals?.length || 0} / {query.requiredApprovals || 3} peer approvals
+          </div>
+        </div>
+      )}
+
+      {query.status === 'resolved' && query.proposedAnswer && (
+        <div className="mt-lg" style={{
+          padding: 'var(--space-md)',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          borderRadius: 'var(--radius-md)',
+        }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--accent-green-light)', fontWeight: 600, marginBottom: '4px' }}>
+            ✅ Resolved Answer
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+            {query.proposedAnswer}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
